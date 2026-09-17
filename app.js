@@ -84,6 +84,17 @@ async function loadCloudRecords() {
     .select('*')
     .order('fecha', { ascending: false });
   if (error) throw error;
+
+  const localRecords = state.records.slice();
+  if (!data?.length && localRecords.length) {
+    const { error: migrationError } = await cloudClient
+      .from('gastos')
+      .insert(localRecords.map(cloudRecordFromLocal));
+    if (migrationError) throw migrationError;
+    state.records = localRecords;
+    return;
+  }
+
   state.records = (data || []).map(localRecordFromCloud);
   saveRecords();
 }
