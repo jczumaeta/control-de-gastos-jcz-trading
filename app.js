@@ -133,7 +133,13 @@ function showAuthGate() {
 async function authenticate(email, password, createAccount = false) {
   if (!cloudClient) throw new Error('No se pudo cargar el servicio de autenticación.');
   const result = createAccount
-    ? await cloudClient.auth.signUp({ email, password })
+    ? await cloudClient.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: `${window.location.origin}${window.location.pathname}`,
+      },
+    })
     : await cloudClient.auth.signInWithPassword({ email, password });
   if (result.error) throw result.error;
   if (createAccount && !result.data.session) {
