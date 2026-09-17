@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Gastos" />
+    <meta name="description" content="Control de gastos diario, semanal y mensual." />
+    <title>Control de gastos</title>
+    <link rel="manifest" href="manifest.json" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <link rel="stylesheet" href="styles.css?v=20260917-2" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-wrap">
+          <img src="assets/logo.jpg" alt="JCZ Trading" class="brand-logo" />
+        </div>
+        <div class="title-block">
+          <p class="eyebrow">Control de gastos</p>
+          <h1>Gastos del mes</h1>
+        </div>
+        <div class="top-actions">
+          <button id="exportCsvBtn" type="button">Exportar Excel</button>
+          <button id="shareBtn" type="button" class="secondary">Enviar</button>
+        </div>
+      </header>
+
+      <nav class="tabs" aria-label="Vista principal">
+        <button class="tab-button active" type="button" data-view="daily">Por día</button>
+        <button class="tab-button" type="button" data-view="weekly">Semanas</button>
+        <button class="tab-button" type="button" data-view="monthly">Gastos del mes</button>
+      </nav>
+
+      <main class="content">
+        <section class="panel form-panel">
+          <h2>Registrar gasto</h2>
+          <form id="expenseForm">
+            <div class="field-grid">
+              <label>
+                Item
+                <div class="input-with-action">
+                  <input name="item" type="text" placeholder="Ej. Compra de insumos" required />
+                  <button type="button" class="voice-btn" data-target="item" aria-label="Dictar item">🎙</button>
+                </div>
+              </label>
+
+              <label>
+                Fecha
+                <div class="input-with-action">
+                  <input name="fecha" type="date" required />
+                  <button type="button" class="voice-btn" data-target="fecha" aria-label="Dictar fecha">🎙</button>
+                </div>
+              </label>
+
+              <label>
+                Número de factura
+                <div class="input-with-action">
+                  <input name="numeroFactura" type="text" placeholder="F-001" />
+                  <button type="button" class="voice-btn" data-target="numeroFactura" aria-label="Dictar número de factura">🎙</button>
+                </div>
+              </label>
+
+              <label>
+                Total pagado
+                <div class="input-with-action">
+                  <input name="totalPagado" type="number" min="0" step="0.01" placeholder="0.00" required />
+                  <button type="button" class="voice-btn" data-target="totalPagado" aria-label="Dictar total pagado">🎙</button>
+                </div>
+              </label>
+
+              <label class="full-span">
+                Descripción
+                <div class="input-with-action textarea-wrap">
+                  <textarea name="descripcion" rows="3" placeholder="Detalle del gasto"></textarea>
+                  <button type="button" class="voice-btn" data-target="descripcion" aria-label="Dictar descripción">🎙</button>
+                </div>
+              </label>
+
+              <label class="full-span upload-label">
+                Imagen del comprobante
+                <div class="receipt-actions">
+                  <button type="button" class="receipt-btn" id="takePhotoBtn">Tomar foto</button>
+                  <button type="button" class="receipt-btn secondary" id="chooseFileBtn">Elegir archivo</button>
+                </div>
+                <input id="cameraInput" name="imagenCamara" type="file" accept="image/*" capture="environment" hidden />
+                <input id="fileInput" name="imagenArchivo" type="file" accept="image/*" hidden />
+                <span id="receiptStatus" class="receipt-status">No se ha seleccionado ningún comprobante.</span>
+              </label>
+            </div>
+
+            <button type="submit" class="primary-btn">Guardar gasto</button>
+          </form>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <h2 id="viewTitle">Gastos por día</h2>
+            <div id="summaryPill" class="summary-pill">$0.00</div>
+          </div>
+          <div id="viewContainer" class="view-container"></div>
+        </section>
+      </main>
+    </div>
+
+    <div id="cameraModal" class="camera-modal" hidden>
+      <div class="camera-dialog" role="dialog" aria-modal="true" aria-labelledby="cameraTitle">
+        <h2 id="cameraTitle">Tomar foto del comprobante</h2>
+        <video id="cameraPreview" autoplay playsinline></video>
+        <div class="camera-actions">
+          <button type="button" class="receipt-btn" id="capturePhotoBtn">Capturar foto</button>
+          <button type="button" class="receipt-btn secondary" id="closeCameraBtn">Cancelar</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="app.js?v=20260917-2"></script>
+  </body>
+</html>
