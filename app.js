@@ -33,6 +33,7 @@ const authEmail = document.getElementById('authEmail');
 const authPassword = document.getElementById('authPassword');
 const authMessage = document.getElementById('authMessage');
 const createAccountBtn = document.getElementById('createAccountBtn');
+const resendConfirmationBtn = document.getElementById('resendConfirmationBtn');
 const userSession = document.getElementById('userSession');
 const userEmail = document.getElementById('userEmail');
 const signOutBtn = document.getElementById('signOutBtn');
@@ -136,6 +137,7 @@ async function authenticate(email, password, createAccount = false) {
     : await cloudClient.auth.signInWithPassword({ email, password });
   if (result.error) throw result.error;
   if (createAccount && !result.data.session) {
+    resendConfirmationBtn.hidden = false;
     setAuthMessage('Cuenta creada. Revisa tu correo para confirmar la cuenta.', false);
     return;
   }
@@ -175,6 +177,21 @@ function bindAuth() {
       await authenticate(authEmail.value.trim(), authPassword.value, true);
     } catch (error) {
       setAuthMessage(error.message || 'No se pudo crear la cuenta.');
+    }
+  });
+
+  resendConfirmationBtn.addEventListener('click', async () => {
+    const email = authEmail.value.trim();
+    if (!email) {
+      setAuthMessage('Escribe tu correo electrónico antes de reenviar la confirmación.');
+      return;
+    }
+    try {
+      const { error } = await cloudClient.auth.resend({ type: 'signup', email });
+      if (error) throw error;
+      setAuthMessage('Correo reenviado. Revisa spam, promociones y correo no deseado.', false);
+    } catch (error) {
+      setAuthMessage(error.message || 'No se pudo reenviar el correo.');
     }
   });
 
