@@ -27,6 +27,69 @@ body {
   padding: 20px;
 }
 
+.auth-gate {
+  width: min(460px, 100%);
+  margin: 8vh auto 0;
+  padding: 28px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+}
+
+.auth-gate[hidden],
+.user-session[hidden] {
+  display: none;
+}
+
+.auth-gate h1 {
+  margin: 14px 0 8px;
+  font-size: 1.7rem;
+}
+
+.auth-gate p {
+  color: var(--muted);
+}
+
+.auth-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.auth-form label {
+  gap: 6px;
+}
+
+.auth-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.auth-message {
+  min-height: 1.25rem;
+  color: var(--danger);
+  font-size: 0.9rem;
+}
+
+.user-session {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin: 0 auto 12px;
+  max-width: 1280px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.user-session button {
+  padding: 7px 10px;
+  background: #e2e8f0;
+  color: var(--secondary);
+}
+
 button, input, textarea {
   font: inherit;
 }

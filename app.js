@@ -1,4 +1,7 @@
 const STORAGE_KEY = 'gastos-tracker-v1';
+const SUPABASE_URL = 'https://sncxzaoofbpwfekdumej.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNuY3h6YW9vZmJwd2Zla2R1bWVqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2ODM1ODAsImV4cCI6MjEwNTI1OTU4MH0.xMl7tyuKyGhmgq2jh_etnasWkpdhCaVoqVSA8wZjNYg';
+const cloudClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const state = {
   view: 'daily',
@@ -13,6 +16,7 @@ const exportBtn = document.getElementById('exportCsvBtn');
 const shareBtn = document.getElementById('shareBtn');
 const tabButtons = document.querySelectorAll('.tab-button');
 const speechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+const nativeSpeechRecognition = window.Capacitor?.Plugins?.SpeechRecognition;
 const cameraInput = document.getElementById('cameraInput');
 const fileInput = document.getElementById('fileInput');
 const takePhotoBtn = document.getElementById('takePhotoBtn');
@@ -22,8 +26,19 @@ const cameraModal = document.getElementById('cameraModal');
 const cameraPreview = document.getElementById('cameraPreview');
 const capturePhotoBtn = document.getElementById('capturePhotoBtn');
 const closeCameraBtn = document.getElementById('closeCameraBtn');
+const authGate = document.getElementById('authGate');
+const appContent = document.getElementById('appContent');
+const authForm = document.getElementById('authForm');
+const authEmail = document.getElementById('authEmail');
+const authPassword = document.getElementById('authPassword');
+const authMessage = document.getElementById('authMessage');
+const createAccountBtn = document.getElementById('createAccountBtn');
+const userSession = document.getElementById('userSession');
+const userEmail = document.getElementById('userEmail');
+const signOutBtn = document.getElementById('signOutBtn');
 let cameraStream = null;
 let capturedImageFile = null;
+let currentUser = null;
 
 function loadRecords() {
   try {
@@ -36,6 +51,127 @@ function loadRecords() {
 
 function saveRecords() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state.records));
+}
+
+function cloudRecordFromLocal(record) {
+  return {
+    id: record.id,
+    user_id: currentUser.id,
+    item: record.item,
+    fecha: record.fecha,
+    numero_factura: record.numeroFactura || '',
+    total_pagado: Number(record.totalPagado || 0),
+    descripcion: record.descripcion || '',
+    imagen: record.imagen || '',
+  };
+}
+
+function localRecordFromCloud(record) {
+  return {
+    id: record.id,
+    item: record.item,
+    fecha: record.fecha,
+    numeroFactura: record.numero_factura || '',
+    totalPagado: Number(record.total_pagado || 0),
+    descripcion: record.descripcion || '',
+    imagen: record.imagen || '',
+  };
+}
+
+async function loadCloudRecords() {
+  const { data, error } = await cloudClient
+    .from('gastos')
+    .select('*')
+    .order('fecha', { ascending: false });
+  if (error) throw error;
+  state.records = (data || []).map(localRecordFromCloud);
+  saveRecords();
+}
+
+async function insertCloudRecord(record) {
+  const { error } = await cloudClient.from('gastos').insert(cloudRecordFromLocal(record));
+  if (error) throw error;
+}
+
+async function deleteCloudRecord(recordId) {
+  const { error } = await cloudClient.from('gastos').delete().eq('id', recordId);
+  if (error) throw error;
+}
+
+function setAuthMessage(message, isError = true) {
+  authMessage.textContent = message;
+  authMessage.style.color = isError ? 'var(--danger)' : 'var(--success)';
+}
+
+function showAuthenticatedApp(user) {
+  currentUser = user;
+  authGate.hidden = true;
+  appContent.hidden = false;
+  userSession.hidden = false;
+  userEmail.textContent = user.email;
+}
+
+function showAuthGate() {
+  currentUser = null;
+  authGate.hidden = false;
+  appContent.hidden = true;
+  userSession.hidden = true;
+}
+
+async function authenticate(email, password, createAccount = false) {
+  if (!cloudClient) throw new Error('No se pudo cargar el servicio de autenticación.');
+  const result = createAccount
+    ? await cloudClient.auth.signUp({ email, password })
+    : await cloudClient.auth.signInWithPassword({ email, password });
+  if (result.error) throw result.error;
+  if (createAccount && !result.data.session) {
+    setAuthMessage('Cuenta creada. Revisa tu correo para confirmar la cuenta.', false);
+    return;
+  }
+  await handleSession(result.data.session);
+}
+
+async function handleSession(session) {
+  if (!session?.user) {
+    showAuthGate();
+    return;
+  }
+  showAuthenticatedApp(session.user);
+  try {
+    await loadCloudRecords();
+    renderView();
+  } catch (error) {
+    setAuthMessage(`No se pudieron cargar los gastos: ${error.message}`);
+    await cloudClient.auth.signOut();
+  }
+}
+
+function bindAuth() {
+  authForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    setAuthMessage('Conectando...', false);
+    try {
+      await authenticate(authEmail.value.trim(), authPassword.value, false);
+    } catch (error) {
+      setAuthMessage(error.message || 'Correo o contraseña incorrectos.');
+    }
+  });
+
+  createAccountBtn.addEventListener('click', async () => {
+    if (!authForm.reportValidity()) return;
+    setAuthMessage('Creando cuenta...', false);
+    try {
+      await authenticate(authEmail.value.trim(), authPassword.value, true);
+    } catch (error) {
+      setAuthMessage(error.message || 'No se pudo crear la cuenta.');
+    }
+  });
+
+  signOutBtn.addEventListener('click', async () => {
+    await cloudClient.auth.signOut();
+    state.records = [];
+    renderView();
+  });
 }
 
 function populateVoiceValue(targetName, spokenText) {
@@ -68,18 +204,51 @@ function bindVoiceButtons() {
   document.querySelectorAll('.voice-btn').forEach((button) => {
     button.addEventListener('click', async () => {
       const targetName = button.dataset.target;
-      if (!speechRecognition) {
+      if (!speechRecognition && !nativeSpeechRecognition) {
         alert('Este navegador no admite dictado por voz. Abre la app en Google Chrome o Microsoft Edge y permite el acceso al micrófono.');
         return;
+      }
+
+      button.textContent = '…';
+      button.disabled = true;
+
+      if (nativeSpeechRecognition) {
+        try {
+          const permission = await nativeSpeechRecognition.requestPermissions();
+          if (permission.speechRecognition !== 'granted' && permission.microphone !== 'granted') {
+            throw new Error('permission-denied');
+          }
+
+          const availability = await nativeSpeechRecognition.available();
+          if (!availability.available) {
+            throw new Error('unavailable');
+          }
+
+          const result = await nativeSpeechRecognition.start({
+            language: 'es-PE',
+            maxResults: 1,
+            partialResults: false,
+            popup: true,
+          });
+          const spokenText = result.matches?.[0] || '';
+          if (spokenText) populateVoiceValue(targetName, spokenText);
+          button.textContent = '🎙';
+          button.disabled = false;
+          return;
+        } catch (error) {
+          button.textContent = '🎙';
+          button.disabled = false;
+          alert(error.message === 'permission-denied'
+            ? 'Permite el micrófono y el reconocimiento de voz en los permisos de Android.'
+            : 'El reconocimiento de voz no está disponible en este teléfono. Verifica que Google tenga habilitado el servicio de voz.');
+          return;
+        }
       }
 
       const recognition = new speechRecognition();
       recognition.lang = 'es-PE';
       recognition.interimResults = false;
       recognition.maxAlternatives = 1;
-
-      button.textContent = '…';
-      button.disabled = true;
 
       const resetButton = () => {
         button.textContent = '🎙';
@@ -650,6 +819,7 @@ expenseForm.addEventListener('submit', async (event) => {
     state.records.push(record);
     state.records.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
     saveRecords();
+    await insertCloudRecord(record);
     expenseForm.reset();
     capturedImageFile = null;
     receiptStatus.textContent = 'No se ha seleccionado ningún comprobante.';
@@ -667,14 +837,19 @@ tabButtons.forEach((button) => {
   });
 });
 
-viewContainer.addEventListener('click', (event) => {
+viewContainer.addEventListener('click', async (event) => {
   const button = event.target.closest('[data-delete-id]');
   if (!button) return;
 
   const { deleteId } = button.dataset;
-  state.records = state.records.filter((record) => record.id !== deleteId);
-  saveRecords();
-  renderView();
+  try {
+    await deleteCloudRecord(deleteId);
+    state.records = state.records.filter((record) => record.id !== deleteId);
+    saveRecords();
+    renderView();
+  } catch (error) {
+    alert(error.message || 'No se pudo eliminar el gasto en la nube.');
+  }
 });
 
 exportBtn.addEventListener('click', async () => {
@@ -730,4 +905,11 @@ if ('serviceWorker' in navigator) {
 
 bindVoiceButtons();
 bindReceiptButtons();
-renderView();
+bindAuth();
+
+if (cloudClient) {
+  cloudClient.auth.getSession().then(({ data }) => handleSession(data.session));
+  cloudClient.auth.onAuthStateChange((_event, session) => handleSession(session));
+} else {
+  setAuthMessage('No se pudo inicializar la conexión con Supabase.');
+}
