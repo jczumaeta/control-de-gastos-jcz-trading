@@ -17,6 +17,8 @@ const shareBtn = document.getElementById('shareBtn');
 const tabButtons = document.querySelectorAll('.tab-button');
 const speechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 const nativeSpeechRecognition = window.Capacitor?.Plugins?.SpeechRecognition;
+const nativeFilesystem = window.Capacitor?.Plugins?.Filesystem;
+const nativeShare = window.Capacitor?.Plugins?.Share;
 const cameraInput = document.getElementById('cameraInput');
 const fileInput = document.getElementById('fileInput');
 const takePhotoBtn = document.getElementById('takePhotoBtn');
@@ -627,6 +629,39 @@ function downloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(String(reader.result).split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function shareNativeFiles(files) {
+  if (!nativeFilesystem || !nativeShare) return false;
+
+  const fileUris = [];
+  for (const file of files) {
+    const base64 = await blobToBase64(file.blob);
+    const result = await nativeFilesystem.writeFile({
+      path: file.name,
+      data: base64,
+      directory: 'CACHE',
+      recursive: true,
+    });
+    fileUris.push(result.uri);
+  }
+
+  await nativeShare.share({
+    title: 'Reporte de gastos JCZ Trading',
+    text: getSummaryText(),
+    files: fileUris,
+    dialogTitle: 'Enviar reporte',
+  });
+  return true;
+}
+
 function buildPdfBlob() {
   if (!window.jspdf?.jsPDF) throw new Error('La librería PDF no está disponible.');
   const { jsPDF } = window.jspdf;
@@ -948,6 +983,7 @@ viewContainer.addEventListener('click', async (event) => {
 exportBtn.addEventListener('click', async () => {
   try {
     const blob = await exportWorkbook();
+    if (await shareNativeFiles([{ blob, name: 'gastos-jcz-trading.xlsx' }])) return;
     downloadBlob(blob, 'gastos-jcz-trading.xlsx');
   } catch (error) {
     alert(error.message || 'No se pudo exportar el archivo Excel.');
@@ -977,6 +1013,8 @@ async function shareReport(format) {
     files.push(new File([pdfBlob], 'gastos-jcz-trading.pdf', { type: 'application/pdf' }));
   }
 
+  if (await shareNativeFiles(files.map((file) => ({ blob: file, name: file.name })))) return;
+
   if (navigator.share && (!navigator.canShare || navigator.canShare({ files }))) {
     try {
       await navigator.share({
@@ -1002,10 +1040,19 @@ shareBtn.addEventListener('click', () => {
   shareModal.hidden = false;
 });
 
-shareExcelBtn.addEventListener('click', async () => { closeShareDialog(); await shareReport('excel'); });
-sharePdfBtn.addEventListener('click', async () => { closeShareDialog(); await shareReport('pdf'); });
-shareBothBtn.addEventListener('click', async () => { closeShareDialog(); await shareReport('both'); });
-shareWhatsappBtn.addEventListener('click', async () => { closeShareDialog(); await shareReport('whatsapp'); });
+async function runShare(format) {
+  closeShareDialog();
+  try {
+    await shareReport(format);
+  } catch (error) {
+    alert(error.message || 'No se pudo preparar el archivo para compartir.');
+  }
+}
+
+shareExcelBtn.addEventListener('click', () => runShare('excel'));
+sharePdfBtn.addEventListener('click', () => runShare('pdf'));
+shareBothBtn.addEventListener('click', () => runShare('both'));
+shareWhatsappBtn.addEventListener('click', () => runShare('whatsapp'));
 closeShareBtn.addEventListener('click', closeShareDialog);
 
 if ('serviceWorker' in navigator) {
