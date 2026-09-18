@@ -18,6 +18,8 @@
 html, body {
   margin: 0;
   min-height: 100%;
+  width: 100%;
+  overflow-x: hidden;
   font-family: Arial, Helvetica, sans-serif;
   background: linear-gradient(180deg, #eff6ff 0%, #f8fafc 100%);
   color: var(--secondary);
@@ -200,9 +202,11 @@ button.primary-btn,
   display: grid;
   grid-template-columns: minmax(280px, 420px) minmax(0, 1fr);
   gap: 20px;
+  min-width: 0;
 }
 
 .panel {
+  min-width: 0;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 18px;
@@ -340,6 +344,10 @@ textarea {
   flex-wrap: wrap;
 }
 
+.share-dialog p {
+  color: var(--muted);
+}
+
 .primary-btn {
   margin-top: 18px;
   width: 100%;
@@ -395,7 +403,10 @@ textarea {
 }
 
 .table-wrap {
+  width: 100%;
+  max-width: 100%;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
 }
 
 table {
@@ -452,11 +463,85 @@ td img {
 }
 
 @media (max-width: 900px) {
+  body {
+    padding: 12px;
+  }
+
+  .topbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .brand-wrap {
+    flex-basis: auto;
+  }
+
+  .top-actions,
+  .top-actions button,
+  .tabs,
+  .tabs button {
+    width: 100%;
+  }
+
+  .tabs,
+  .top-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
   .content {
     grid-template-columns: 1fr;
   }
 
   .field-grid {
     grid-template-columns: 1fr;
+  }
+
+  .panel,
+  .day-page,
+  .week-card,
+  .month-summary {
+    padding: 14px;
+  }
+}
+
+@media (max-width: 600px) {
+  .auth-gate {
+    margin-top: 3vh;
+    padding: 20px;
+  }
+
+  .section-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .receipt-actions,
+  .receipt-actions button,
+  .camera-actions,
+  .camera-actions button {
+    width: 100%;
+  }
+
+  .camera-dialog {
+    padding: 14px;
+  }
+
+  table,
+  .month-summary table {
+    min-width: 0;
+    table-layout: fixed;
+  }
+
+  th,
+  td {
+    padding: 7px 4px;
+    font-size: 0.75rem;
+    overflow-wrap: anywhere;
+  }
+
+  td img {
+    width: 48px;
+    height: 48px;
   }
 }

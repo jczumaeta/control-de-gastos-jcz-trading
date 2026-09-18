@@ -143,9 +143,23 @@
         </div>
       </div>
     </div>
+    <div id="shareModal" class="camera-modal" hidden>
+      <div class="camera-dialog share-dialog" role="dialog" aria-modal="true" aria-labelledby="shareTitle">
+        <h2 id="shareTitle">Enviar reporte</h2>
+        <p>Elige el formato que deseas compartir.</p>
+        <div class="camera-actions">
+          <button type="button" class="receipt-btn" id="shareExcelBtn">Excel (.xlsx)</button>
+          <button type="button" class="receipt-btn" id="sharePdfBtn">PDF</button>
+          <button type="button" class="receipt-btn" id="shareBothBtn">Excel + PDF</button>
+          <button type="button" class="receipt-btn secondary" id="shareWhatsappBtn">WhatsApp (texto)</button>
+          <button type="button" class="receipt-btn secondary" id="closeShareBtn">Cancelar</button>
+        </div>
+      </div>
+    </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="assets/vendor/xlsx.full.min.js"></script>
+    <script src="assets/vendor/jspdf.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="app.js?v=20260917-3"></script>
   </body>

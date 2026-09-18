@@ -26,6 +26,12 @@ const cameraModal = document.getElementById('cameraModal');
 const cameraPreview = document.getElementById('cameraPreview');
 const capturePhotoBtn = document.getElementById('capturePhotoBtn');
 const closeCameraBtn = document.getElementById('closeCameraBtn');
+const shareModal = document.getElementById('shareModal');
+const shareExcelBtn = document.getElementById('shareExcelBtn');
+const sharePdfBtn = document.getElementById('sharePdfBtn');
+const shareBothBtn = document.getElementById('shareBothBtn');
+const shareWhatsappBtn = document.getElementById('shareWhatsappBtn');
+const closeShareBtn = document.getElementById('closeShareBtn');
 const authGate = document.getElementById('authGate');
 const appContent = document.getElementById('appContent');
 const authForm = document.getElementById('authForm');
@@ -562,6 +568,7 @@ async function exportWorkbook() {
 
   const dailyRows = buildDailyRows();
   const dailyData = [
+    ['JCZ Trading'],
     ['N°', 'Item', 'Fecha', 'Numero de factura', 'Total Pagado', 'Descripcion', 'Imagen'],
     ...dailyRows.map((row) => [
       row.n,
@@ -580,15 +587,15 @@ async function exportWorkbook() {
   ];
   const dailyLogo = document.querySelector('.brand-logo');
   if (dailyLogo) {
-    const logoCell = { t: 's', v: 'JCZ Trading' };
     dailySheet['A1'] = { t: 's', v: 'JCZ Trading' };
     dailySheet['A1'].s = { font: { bold: true, color: { rgb: '1D4ED8' }, sz: 18 }, alignment: { horizontal: 'center' } };
-    dailySheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 1, c: 6 } }];
+    dailySheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }];
   }
   XLSX.utils.book_append_sheet(workbook, dailySheet, 'Gastos por dia');
 
   const weeklyRows = buildWeeklyRows();
   const weeklyData = [
+    ['JCZ Trading'],
     ['Semana', 'Rango', 'Total'],
     ...weeklyRows.map((row) => [row.semana, row.rango, row.total]),
     ['Total de semanas', '', weeklyRows.reduce((sum, row) => sum + Number(row.total || 0), 0)],
@@ -599,6 +606,7 @@ async function exportWorkbook() {
 
   const monthlyRows = buildMonthlyRows();
   const monthlyData = [
+    ['JCZ Trading'],
     ['Semana', 'Total'],
     ...monthlyRows.map((row) => [row.semana, row.total]),
   ];
@@ -608,6 +616,57 @@ async function exportWorkbook() {
 
   const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
   return new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function buildPdfBlob() {
+  if (!window.jspdf?.jsPDF) throw new Error('La librería PDF no está disponible.');
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
+  const margin = 36;
+  let y = 42;
+  pdf.setFontSize(18);
+  pdf.setTextColor(29, 78, 216);
+  pdf.text('JCZ Trading', margin, y);
+  y += 28;
+  pdf.setFontSize(10);
+  pdf.setTextColor(15, 23, 42);
+  pdf.text('Control de gastos', margin, y);
+  y += 24;
+  const columns = ['N°', 'Item', 'Fecha', 'Factura', 'Total', 'Descripción'];
+  const widths = [24, 105, 62, 65, 58, 180];
+  const drawRow = (values, header = false) => {
+    let x = margin;
+    if (header) pdf.setFont(undefined, 'bold');
+    values.forEach((value, index) => {
+      pdf.text(String(value ?? '-').slice(0, 34), x, y);
+      x += widths[index];
+    });
+    if (header) pdf.setFont(undefined, 'normal');
+    y += 17;
+    if (y > 770) {
+      pdf.addPage();
+      y = 42;
+    }
+  };
+  drawRow(columns, true);
+  buildDailyRows().forEach((row) => drawRow([
+    row.n,
+    row.item,
+    formatDateShort(row.fecha),
+    row.numeroFactura,
+    formatCurrency(row.totalPagado),
+    row.descripcion,
+  ]));
+  return pdf.output('blob');
 }
 
 function buildCsv() {
@@ -889,45 +948,65 @@ viewContainer.addEventListener('click', async (event) => {
 exportBtn.addEventListener('click', async () => {
   try {
     const blob = await exportWorkbook();
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = 'gastos-jcz-trading.xlsx';
-    anchor.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, 'gastos-jcz-trading.xlsx');
   } catch (error) {
     alert(error.message || 'No se pudo exportar el archivo Excel.');
   }
 });
 
-shareBtn.addEventListener('click', async () => {
-  const csv = buildCsv();
+function getSummaryText() {
   const summaryText = `Control de gastos\n\n${state.records.map((item) => `${item.item}: ${formatCurrency(item.totalPagado)}`).join('\n') || 'Sin registros'}`;
+  return summaryText;
+}
 
-  if (navigator.share) {
-    const file = new File([csv], 'gastos-mes.csv', { type: 'text/csv' });
+async function shareReport(format) {
+  if (format === 'whatsapp') {
+    const whatsappLink = `whatsapp://send?text=${encodeURIComponent(getSummaryText())}`;
+    window.location.href = whatsappLink;
+    setTimeout(() => window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(getSummaryText())}`, '_blank'), 800);
+    return;
+  }
+
+  const files = [];
+  if (format === 'excel' || format === 'both') {
+    const excelBlob = await exportWorkbook();
+    files.push(new File([excelBlob], 'gastos-jcz-trading.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  }
+  if (format === 'pdf' || format === 'both') {
+    const pdfBlob = buildPdfBlob();
+    files.push(new File([pdfBlob], 'gastos-jcz-trading.pdf', { type: 'application/pdf' }));
+  }
+
+  if (navigator.share && (!navigator.canShare || navigator.canShare({ files }))) {
     try {
       await navigator.share({
         title: 'Gastos del mes',
-        text: summaryText,
-        files: [file],
+        text: getSummaryText(),
+        files,
       });
       return;
     } catch (error) {
-      // Fallback to mail/WhatsApp below.
+      if (error.name === 'AbortError') return;
     }
   }
 
-  const whatsappLink = `https://api.whatsapp.com/send?text=${encodeURIComponent(summaryText)}`;
-  const mailtoLink = `mailto:?subject=${encodeURIComponent('Gastos del mes')}&body=${encodeURIComponent(summaryText)}`;
+  files.forEach((file) => downloadBlob(file, file.name));
+  alert('Los archivos se descargaron porque este navegador no permite adjuntarlos directamente.');
+}
 
-  const shareChoice = window.confirm('¿Quieres enviar por WhatsApp o por correo?');
-  if (shareChoice) {
-    window.open(whatsappLink, '_blank');
-  } else {
-    window.location.href = mailtoLink;
-  }
+function closeShareDialog() {
+  shareModal.hidden = true;
+}
+
+shareBtn.addEventListener('click', () => {
+  shareModal.hidden = false;
 });
+
+shareExcelBtn.addEventListener('click', async () => { closeShareDialog(); await shareReport('excel'); });
+sharePdfBtn.addEventListener('click', async () => { closeShareDialog(); await shareReport('pdf'); });
+shareBothBtn.addEventListener('click', async () => { closeShareDialog(); await shareReport('both'); });
+shareWhatsappBtn.addEventListener('click', async () => { closeShareDialog(); await shareReport('whatsapp'); });
+closeShareBtn.addEventListener('click', closeShareDialog);
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
