@@ -6,9 +6,18 @@ const cloudClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_ANON_KE
 const state = {
   view: 'daily',
   records: loadRecords(),
+  selectedDate: null,
+  selectedRecordIds: new Set(),
+  shareRecords: null,
+  openRecordId: null,
+  editingRecordId: null,
 };
 
 const expenseForm = document.getElementById('expenseForm');
+const datePickerInput = document.getElementById('datePickerInput');
+const chooseDateBtn = document.getElementById('chooseDateBtn');
+const saveExpenseBtn = document.getElementById('saveExpenseBtn');
+const cancelEditBtn = document.getElementById('cancelEditBtn');
 const viewContainer = document.getElementById('viewContainer');
 const viewTitle = document.getElementById('viewTitle');
 const summaryPill = document.getElementById('summaryPill');
@@ -45,9 +54,51 @@ const resendConfirmationBtn = document.getElementById('resendConfirmationBtn');
 const userSession = document.getElementById('userSession');
 const userEmail = document.getElementById('userEmail');
 const signOutBtn = document.getElementById('signOutBtn');
+const profileIconInput = document.getElementById('profileIconInput');
+const profileIconPreview = document.getElementById('profileIconPreview');
+const userProfileIcon = document.getElementById('userProfileIcon');
+const dayTabs = document.getElementById('dayTabs');
+const selectionCount = document.getElementById('selectionCount');
+const shareSelectedBtn = document.getElementById('shareSelectedBtn');
+const recordModal = document.getElementById('recordModal');
+const recordDetails = document.getElementById('recordDetails');
+const recordBackBtn = document.getElementById('recordBackBtn');
+const shareRecordBtn = document.getElementById('shareRecordBtn');
+const saveReceiptBtn = document.getElementById('saveReceiptBtn');
+const editRecordBtn = document.getElementById('editRecordBtn');
 let cameraStream = null;
 let capturedImageFile = null;
 let currentUser = null;
+
+if (window.Capacitor?.isNativePlatform?.() && window.Capacitor.getPlatform?.() === 'android') {
+  document.body.classList.add('native-android');
+}
+
+function todayLocalDate() {
+  const today = new Date();
+  const offset = today.getTimezoneOffset();
+  return new Date(today.getTime() - offset * 60000).toISOString().slice(0, 10);
+}
+
+function setDefaultExpenseDate() {
+  const dateInput = expenseForm.elements.namedItem('fecha');
+  if (dateInput && !dateInput.value) dateInput.value = formatDateInput(todayLocalDate());
+  if (datePickerInput && !datePickerInput.value) datePickerInput.value = todayLocalDate();
+}
+
+function formatDateInput(isoDate) {
+  const match = String(isoDate || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : '';
+}
+
+function normalizeDateInput(dateValue) {
+  const match = String(dateValue || '').trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!match) return '';
+  const [, day, month, year] = match;
+  const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+  if (parsed.getFullYear() !== Number(year) || parsed.getMonth() !== Number(month) - 1 || parsed.getDate() !== Number(day)) return '';
+  return `${year}-${month}-${day}`;
+}
 
 function loadRecords() {
   try {
@@ -113,6 +164,13 @@ async function insertCloudRecord(record) {
   if (error) throw error;
 }
 
+async function updateCloudRecord(record) {
+  const cloudRecord = cloudRecordFromLocal(record);
+  const { id, user_id: userId, ...fields } = cloudRecord;
+  const { error } = await cloudClient.from('gastos').update(fields).eq('id', id).eq('user_id', userId);
+  if (error) throw error;
+}
+
 async function deleteCloudRecord(recordId) {
   const { error } = await cloudClient.from('gastos').delete().eq('id', recordId);
   if (error) throw error;
@@ -129,6 +187,9 @@ function showAuthenticatedApp(user) {
   appContent.hidden = false;
   userSession.hidden = false;
   userEmail.textContent = user.email;
+  const profileIcon = user.user_metadata?.avatar_url || '';
+  userProfileIcon.src = profileIcon;
+  userProfileIcon.hidden = !profileIcon;
 }
 
 function showAuthGate() {
@@ -140,12 +201,16 @@ function showAuthGate() {
 
 async function authenticate(email, password, createAccount = false) {
   if (!cloudClient) throw new Error('No se pudo cargar el servicio de autenticación.');
+  const profileIcon = profileIconInput.files[0]
+    ? await readFileAsDataUrl(profileIconInput.files[0])
+    : '';
   const result = createAccount
     ? await cloudClient.auth.signUp({
       email,
       password,
       options: {
         emailRedirectTo: `${window.location.origin}${window.location.pathname}`,
+        data: profileIcon ? { avatar_url: profileIcon } : {},
       },
     })
     : await cloudClient.auth.signInWithPassword({ email, password });
@@ -174,6 +239,22 @@ async function handleSession(session) {
 }
 
 function bindAuth() {
+  profileIconInput.addEventListener('change', async () => {
+    const file = profileIconInput.files[0];
+    if (!file) {
+      profileIconPreview.hidden = true;
+      profileIconPreview.removeAttribute('src');
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      profileIconInput.value = '';
+      setAuthMessage('El icono de perfil debe ser una imagen.');
+      return;
+    }
+    profileIconPreview.src = await readFileAsDataUrl(file);
+    profileIconPreview.hidden = false;
+  });
+
   authForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     setAuthMessage('Conectando...', false);
@@ -445,12 +526,21 @@ function getWeekRangeFromDate(dateString) {
   const date = new Date(`${dateString}T00:00:00`);
   const start = getWeekStart(date);
   const end = new Date(start);
-  end.setDate(start.getDate() + 5);
+  end.setDate(start.getDate() + 6);
   return { start, end };
 }
 
 function getSummaryTotal(records) {
   return records.reduce((sum, record) => sum + Number(record.totalPagado || 0), 0);
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result || '');
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo.'));
+    reader.readAsDataURL(file);
+  });
 }
 
 function pickImageFile(file) {
@@ -460,20 +550,22 @@ function pickImageFile(file) {
       return;
     }
 
-    if (!file.type.startsWith('image/')) {
-      reject(new Error('El archivo debe ser una imagen.'));
+    const isImage = file.type.startsWith('image/');
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    if (!isImage && !isPdf) {
+      reject(new Error('El comprobante debe ser una imagen o un archivo PDF.'));
       return;
     }
 
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result || '');
-    reader.onerror = () => reject(new Error('No se pudo leer la imagen.'));
+    reader.onerror = () => reject(new Error('No se pudo leer el comprobante.'));
     reader.readAsDataURL(file);
   });
 }
 
-function buildDailyRows() {
-  const grouped = state.records.reduce((accumulator, record) => {
+function buildDailyRows(records = state.records) {
+  const grouped = records.reduce((accumulator, record) => {
     const key = record.fecha;
     if (!accumulator[key]) accumulator[key] = [];
     accumulator[key].push(record);
@@ -484,7 +576,7 @@ function buildDailyRows() {
   Object.keys(grouped).sort((a, b) => new Date(b) - new Date(a)).forEach((date) => {
     grouped[date].forEach((record, index) => {
       rows.push({
-        fecha: date,
+        fecha: formatDateLong(date),
         n: index + 1,
         item: record.item,
         numeroFactura: record.numeroFactura || '-',
@@ -498,12 +590,11 @@ function buildDailyRows() {
   return rows;
 }
 
-function buildWeeklyRows() {
+function buildWeeklyRows(records = state.records) {
   const weekMap = {};
 
-  state.records.forEach((record) => {
+  records.forEach((record) => {
     const date = new Date(`${record.fecha}T00:00:00`);
-    if (date.getDay() === 0) return;
     const weekStart = getWeekStart(date);
     const weekKey = weekStart.toISOString().slice(0, 10);
     if (!weekMap[weekKey]) {
@@ -517,7 +608,7 @@ function buildWeeklyRows() {
     .map(([weekKey, items]) => {
       const start = new Date(`${weekKey}T00:00:00`);
       const end = new Date(start);
-      end.setDate(start.getDate() + 5);
+      end.setDate(start.getDate() + 6);
       return {
         semana: `Semana ${getMonthWeekNumber(weekKey)}`,
         rango: `${formatDateShort(weekKey)} - ${formatDateShort(end.toISOString().slice(0, 10))}`,
@@ -526,12 +617,10 @@ function buildWeeklyRows() {
     });
 }
 
-function buildMonthlyRows() {
+function buildMonthlyRows(records = state.records) {
   const monthMap = {};
 
-  state.records.forEach((record) => {
-    const date = new Date(`${record.fecha}T00:00:00`);
-    if (date.getDay() === 0) return;
+  records.forEach((record) => {
     const weekNumber = getMonthWeekNumber(record.fecha);
     if (!monthMap[weekNumber]) {
       monthMap[weekNumber] = [];
@@ -561,41 +650,31 @@ async function loadLogoBase64() {
   });
 }
 
-async function exportWorkbook() {
+function dailySheetName(date) {
+  return formatDateShort(date).replaceAll('/', '-');
+}
+
+async function exportWorkbook(records = state.records) {
   if (!window.XLSX) {
     throw new Error('La librería XLSX no está disponible.');
   }
 
   const workbook = XLSX.utils.book_new();
 
-  const dailyRows = buildDailyRows();
-  const dailyData = [
-    ['JCZ Trading'],
-    ['N°', 'Item', 'Fecha', 'Numero de factura', 'Total Pagado', 'Descripcion', 'Imagen'],
-    ...dailyRows.map((row) => [
-      row.n,
-      row.item,
-      row.fecha,
-      row.numeroFactura,
-      row.totalPagado,
-      row.descripcion,
-      row.imagen,
-    ]),
-  ];
+  const dates = [...new Set(records.map((record) => record.fecha))].sort((a, b) => new Date(b) - new Date(a));
+  dates.forEach((date) => {
+    const rows = buildDailyRows(records.filter((record) => record.fecha === date));
+    const sheet = XLSX.utils.aoa_to_sheet([
+      ['JCZ Trading'],
+      ['N°', 'Item', 'Fecha', 'Número de factura', 'Total pagado', 'Descripción', 'Comprobante'],
+      ...rows.map((row) => [row.n, row.item, row.fecha, row.numeroFactura, row.totalPagado, row.descripcion, row.imagen]),
+    ]);
+    sheet['!cols'] = [{ wch: 8 }, { wch: 28 }, { wch: 16 }, { wch: 22 }, { wch: 18 }, { wch: 38 }, { wch: 18 }];
+    sheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }];
+    XLSX.utils.book_append_sheet(workbook, sheet, dailySheetName(date));
+  });
 
-  const dailySheet = XLSX.utils.aoa_to_sheet(dailyData);
-  dailySheet['!cols'] = [
-    { wch: 8 }, { wch: 28 }, { wch: 16 }, { wch: 22 }, { wch: 18 }, { wch: 38 }, { wch: 18 },
-  ];
-  const dailyLogo = document.querySelector('.brand-logo');
-  if (dailyLogo) {
-    dailySheet['A1'] = { t: 's', v: 'JCZ Trading' };
-    dailySheet['A1'].s = { font: { bold: true, color: { rgb: '1D4ED8' }, sz: 18 }, alignment: { horizontal: 'center' } };
-    dailySheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }];
-  }
-  XLSX.utils.book_append_sheet(workbook, dailySheet, 'Gastos por dia');
-
-  const weeklyRows = buildWeeklyRows();
+  const weeklyRows = buildWeeklyRows(records);
   const weeklyData = [
     ['JCZ Trading'],
     ['Semana', 'Rango', 'Total'],
@@ -604,9 +683,9 @@ async function exportWorkbook() {
   ];
   const weeklySheet = XLSX.utils.aoa_to_sheet(weeklyData);
   weeklySheet['!cols'] = [{ wch: 18 }, { wch: 26 }, { wch: 18 }];
-  XLSX.utils.book_append_sheet(workbook, weeklySheet, 'Gastos por semana');
+  XLSX.utils.book_append_sheet(workbook, weeklySheet, 'Por semana');
 
-  const monthlyRows = buildMonthlyRows();
+  const monthlyRows = buildMonthlyRows(records);
   const monthlyData = [
     ['JCZ Trading'],
     ['Semana', 'Total'],
@@ -614,7 +693,7 @@ async function exportWorkbook() {
   ];
   const monthlySheet = XLSX.utils.aoa_to_sheet(monthlyData);
   monthlySheet['!cols'] = [{ wch: 18 }, { wch: 18 }];
-  XLSX.utils.book_append_sheet(workbook, monthlySheet, 'Gastos del mes');
+  XLSX.utils.book_append_sheet(workbook, monthlySheet, 'Resumen mensual');
 
   const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
   return new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -627,6 +706,15 @@ function downloadBlob(blob, filename) {
   anchor.download = filename;
   anchor.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function reportBaseName() {
+  const [year, month, day] = todayLocalDate().split('-');
+  return `gastos-jcz-trading-al-${day}-${month}-${year.slice(-2)}`;
+}
+
+function safeFilename(value) {
+  return String(value || 'comprobante').replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-').trim().slice(0, 80) || 'comprobante';
 }
 
 function blobToBase64(blob) {
@@ -662,7 +750,7 @@ async function shareNativeFiles(files) {
   return true;
 }
 
-function buildPdfBlob() {
+function buildPdfBlob(records = state.shareRecords || state.records) {
   if (!window.jspdf?.jsPDF) throw new Error('La librería PDF no está disponible.');
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
@@ -693,7 +781,7 @@ function buildPdfBlob() {
     }
   };
   drawRow(columns, true);
-  buildDailyRows().forEach((row) => drawRow([
+  buildDailyRows(records).forEach((row) => drawRow([
     row.n,
     row.item,
     formatDateShort(row.fecha),
@@ -708,20 +796,31 @@ function buildCsv() {
   return null;
 }
 
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[character]);
+}
+
 function renderDailyTable(date, records) {
   const total = getSummaryTotal(records);
   const rows = records
     .map((record, index) => {
+      const attachment = record.imagen || '';
+      const isPdf = attachment.startsWith('data:application/pdf');
+      const checked = state.selectedRecordIds.has(record.id) ? 'checked' : '';
+      const itemName = escapeHtml(record.item);
       return `
         <tr>
           <td>${index + 1}</td>
-          <td>${record.item}</td>
+          <td><button type="button" class="record-link" data-record-id="${record.id}">${itemName}</button></td>
           <td>${formatDateLong(record.fecha)}</td>
-          <td>${record.numeroFactura || '-'}</td>
+          <td>${escapeHtml(record.numeroFactura || '-')}</td>
           <td>${formatCurrency(record.totalPagado)}</td>
-          <td>${record.descripcion || '-'}</td>
-          <td>${record.imagen ? `<img src="${record.imagen}" alt="Comprobante de ${record.item}" />` : 'Sin imagen'}</td>
-          <td><button type="button" class="delete-btn" data-delete-id="${record.id}">Eliminar</button></td>
+          <td>${escapeHtml(record.descripcion || '-')}</td>
+          <td>${attachment ? `<button type="button" class="receipt-open" data-record-id="${record.id}">${isPdf ? 'Ver PDF' : `<img src="${attachment}" alt="Comprobante de ${itemName}" />`}</button>` : 'Sin comprobante'}</td>
+          <td><input class="record-select" type="checkbox" data-select-record="${record.id}" aria-label="Seleccionar ${itemName}" ${checked} /></td>
+          <td class="record-row-actions"><button type="button" class="edit-btn" data-edit-id="${record.id}">Editar</button><button type="button" class="delete-btn" data-delete-id="${record.id}">Eliminar</button></td>
         </tr>
       `;
     })
@@ -731,7 +830,7 @@ function renderDailyTable(date, records) {
     <article class="day-page">
       <div class="page-header">
         <h3>${formatDateLong(date)}</h3>
-        <span class="summary-pill">${formatCurrency(total)}</span>
+        <span class="summary-pill">ACUMULADO: ${formatCurrency(total)}</span>
       </div>
       <div class="table-wrap">
         <table>
@@ -743,7 +842,8 @@ function renderDailyTable(date, records) {
               <th>Número de factura</th>
               <th>Total Pagado</th>
               <th>Descripción</th>
-              <th>Imagen</th>
+              <th>Comprobante</th>
+              <th>Enviar</th>
               <th>Acción</th>
             </tr>
           </thead>
@@ -764,18 +864,95 @@ function renderDailyView() {
 
   const sortedDates = Object.keys(grouped).sort((a, b) => new Date(b) - new Date(a));
   const total = getSummaryTotal(state.records);
+  const selectedDate = sortedDates.includes(state.selectedDate)
+    ? state.selectedDate
+    : sortedDates.includes(todayLocalDate()) ? todayLocalDate() : sortedDates[0];
+  state.selectedDate = selectedDate;
+  dayTabs.innerHTML = sortedDates.map((date) => `
+    <button type="button" role="tab" aria-selected="${date === selectedDate}" class="day-tab ${date === selectedDate ? 'active' : ''}" data-day-date="${date}">
+      ${formatDateLong(date)}
+    </button>
+  `).join('');
+  updateSelectionControls();
 
   if (!sortedDates.length) {
+    dayTabs.innerHTML = '';
     viewContainer.innerHTML = '<div class="empty-state">Todavía no hay gastos registrados.</div>';
     summaryPill.textContent = formatCurrency(0);
     return;
   }
 
-  viewContainer.innerHTML = sortedDates
-    .map((date) => renderDailyTable(date, grouped[date]))
-    .join('');
+  viewContainer.innerHTML = renderDailyTable(selectedDate, grouped[selectedDate]);
 
   summaryPill.textContent = formatCurrency(total);
+}
+
+function updateSelectionControls() {
+  const count = state.selectedRecordIds.size;
+  selectionCount.textContent = `${count} ${count === 1 ? 'gasto seleccionado' : 'gastos seleccionados'}`;
+  shareSelectedBtn.disabled = count === 0;
+}
+
+function openRecordDetails(record) {
+  state.openRecordId = record.id;
+  const attachment = record.imagen || '';
+  const isPdf = attachment.startsWith('data:application/pdf');
+  recordDetails.innerHTML = `
+    <dl class="record-facts">
+      <div><dt>Item</dt><dd>${escapeHtml(record.item)}</dd></div>
+      <div><dt>Fecha</dt><dd>${formatDateLong(record.fecha)}</dd></div>
+      <div><dt>Número de factura</dt><dd>${escapeHtml(record.numeroFactura || '-')}</dd></div>
+      <div><dt>Total pagado</dt><dd>${formatCurrency(record.totalPagado)}</dd></div>
+      <div><dt>Descripción</dt><dd>${escapeHtml(record.descripcion || '-')}</dd></div>
+    </dl>
+    ${attachment ? (isPdf
+      ? `<iframe class="receipt-document" title="Comprobante PDF" src="${attachment}"></iframe>`
+      : `<img class="receipt-document" src="${attachment}" alt="Comprobante de ${escapeHtml(record.item)}" />`)
+      : '<p>Este gasto no tiene comprobante adjunto.</p>'}
+  `;
+  saveReceiptBtn.hidden = !attachment;
+  recordModal.hidden = false;
+}
+
+function populateExpenseForm(record) {
+  state.editingRecordId = record.id;
+  expenseForm.elements.namedItem('item').value = record.item || '';
+  expenseForm.elements.namedItem('fecha').value = formatDateInput(record.fecha);
+  datePickerInput.value = record.fecha || todayLocalDate();
+  expenseForm.elements.namedItem('numeroFactura').value = record.numeroFactura || '';
+  expenseForm.elements.namedItem('totalPagado').value = record.totalPagado ?? '';
+  expenseForm.elements.namedItem('descripcion').value = record.descripcion || '';
+  capturedImageFile = null;
+  cameraInput.value = '';
+  fileInput.value = '';
+  receiptStatus.textContent = record.imagen ? 'Se conservará el comprobante actual si no eliges otro.' : 'No se ha seleccionado ningún comprobante.';
+  saveExpenseBtn.textContent = 'Actualizar gasto';
+  cancelEditBtn.hidden = false;
+  closeRecordDetails();
+  expenseForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function cancelExpenseEdit() {
+  state.editingRecordId = null;
+  expenseForm.reset();
+  setDefaultExpenseDate();
+  capturedImageFile = null;
+  receiptStatus.textContent = 'No se ha seleccionado ningún comprobante.';
+  saveExpenseBtn.textContent = 'Guardar gasto';
+  cancelEditBtn.hidden = true;
+}
+
+function closeRecordDetails() {
+  recordModal.hidden = true;
+  state.openRecordId = null;
+}
+
+function dataUrlToBlob(dataUrl) {
+  const [metadata, encoded] = dataUrl.split(',');
+  const mime = metadata.match(/data:([^;]+)/)?.[1] || 'application/octet-stream';
+  const binary = atob(encoded);
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  return new Blob([bytes], { type: mime });
 }
 
 function renderWeeklyView() {
@@ -783,7 +960,6 @@ function renderWeeklyView() {
 
   state.records.forEach((record) => {
     const date = new Date(`${record.fecha}T00:00:00`);
-    if (date.getDay() === 0) return;
     const weekKey = getWeekStart(date).toISOString().slice(0, 10);
     if (!map[weekKey]) {
       map[weekKey] = [];
@@ -802,7 +978,7 @@ function renderWeeklyView() {
   const cards = entries.map(([weekKey, items], index) => {
     const start = new Date(`${weekKey}T00:00:00`);
     const end = new Date(start);
-    end.setDate(start.getDate() + 5);
+    end.setDate(start.getDate() + 6);
     const total = getSummaryTotal(items);
     const weekNumber = getMonthWeekNumber(weekKey);
 
@@ -848,8 +1024,6 @@ function renderMonthlyView() {
   const monthMap = {};
 
   state.records.forEach((record) => {
-    const date = new Date(`${record.fecha}T00:00:00`);
-    if (date.getDay() === 0) return;
     const weekNumber = getMonthWeekNumber(record.fecha);
     if (!monthMap[weekNumber]) {
       monthMap[weekNumber] = [];
@@ -907,7 +1081,7 @@ function renderMonthlyView() {
 
 function renderView() {
   viewTitle.textContent = state.view === 'daily'
-    ? 'Gastos por día'
+    ? 'ACUMULADO'
     : state.view === 'weekly'
       ? 'Gastos por semanas'
       : 'Gastos del mes';
@@ -921,36 +1095,55 @@ function renderView() {
   }
 }
 
+setDefaultExpenseDate();
+
+chooseDateBtn.addEventListener('click', () => {
+  if (datePickerInput.showPicker) datePickerInput.showPicker();
+  else datePickerInput.click();
+});
+
+datePickerInput.addEventListener('change', () => {
+  expenseForm.elements.namedItem('fecha').value = formatDateInput(datePickerInput.value);
+});
+
+cancelEditBtn.addEventListener('click', cancelExpenseEdit);
+
 expenseForm.addEventListener('submit', async (event) => {
   event.preventDefault();
 
   const formData = new FormData(expenseForm);
   const file = capturedImageFile || cameraInput.files[0] || fileInput.files[0];
+  const existingRecord = state.records.find((record) => record.id === state.editingRecordId);
 
   try {
-    const imageValue = await pickImageFile(file instanceof File ? file : null);
+    const selectedImage = await pickImageFile(file instanceof File ? file : null);
+    const fecha = normalizeDateInput(formData.get('fecha'));
     const record = {
-      id: crypto.randomUUID ? crypto.randomUUID() : `gasto-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      id: existingRecord?.id || (crypto.randomUUID ? crypto.randomUUID() : `gasto-${Date.now()}-${Math.random().toString(16).slice(2)}`),
       item: String(formData.get('item') || '').trim(),
-      fecha: String(formData.get('fecha') || ''),
+      fecha,
       numeroFactura: String(formData.get('numeroFactura') || '').trim(),
       totalPagado: Number(formData.get('totalPagado') || 0),
       descripcion: String(formData.get('descripcion') || '').trim(),
-      imagen: imageValue,
+      imagen: selectedImage || existingRecord?.imagen || '',
     };
 
     if (!record.item || !record.fecha || !record.totalPagado) {
-      alert('Completa los campos requeridos antes de guardar.');
+      alert('Completa los campos y escribe la fecha como dd/mm/aaaa.');
       return;
     }
 
-    state.records.push(record);
+    if (existingRecord) {
+      await updateCloudRecord(record);
+      state.records = state.records.map((item) => item.id === record.id ? record : item);
+    } else {
+      await insertCloudRecord(record);
+      state.records.push(record);
+    }
     state.records.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+    state.selectedDate = record.fecha;
     saveRecords();
-    await insertCloudRecord(record);
-    expenseForm.reset();
-    capturedImageFile = null;
-    receiptStatus.textContent = 'No se ha seleccionado ningún comprobante.';
+    cancelExpenseEdit();
     renderView();
   } catch (error) {
     alert(error.message || 'No se pudo guardar el gasto.');
@@ -965,53 +1158,143 @@ tabButtons.forEach((button) => {
   });
 });
 
-viewContainer.addEventListener('click', async (event) => {
-  const button = event.target.closest('[data-delete-id]');
+dayTabs.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-day-date]');
   if (!button) return;
+  state.selectedDate = button.dataset.dayDate;
+  renderDailyView();
+});
 
-  const { deleteId } = button.dataset;
-  try {
-    await deleteCloudRecord(deleteId);
-    state.records = state.records.filter((record) => record.id !== deleteId);
-    saveRecords();
-    renderView();
-  } catch (error) {
-    alert(error.message || 'No se pudo eliminar el gasto en la nube.');
+viewContainer.addEventListener('change', (event) => {
+  const checkbox = event.target.closest('[data-select-record]');
+  if (!checkbox) return;
+  const recordId = checkbox.dataset.selectRecord;
+  checkbox.checked ? state.selectedRecordIds.add(recordId) : state.selectedRecordIds.delete(recordId);
+  updateSelectionControls();
+});
+
+viewContainer.addEventListener('click', async (event) => {
+  const editButton = event.target.closest('[data-edit-id]');
+  if (editButton) {
+    const record = state.records.find((item) => item.id === editButton.dataset.editId);
+    if (record) populateExpenseForm(record);
+    return;
   }
+
+  const deleteButton = event.target.closest('[data-delete-id]');
+  if (deleteButton) {
+    const { deleteId } = deleteButton.dataset;
+    try {
+      await deleteCloudRecord(deleteId);
+      state.records = state.records.filter((record) => record.id !== deleteId);
+      state.selectedRecordIds.delete(deleteId);
+      saveRecords();
+      renderView();
+    } catch (error) {
+      alert(error.message || 'No se pudo eliminar el gasto en la nube.');
+    }
+    return;
+  }
+
+  const recordButton = event.target.closest('[data-record-id]');
+  if (recordButton) {
+    const record = state.records.find((item) => item.id === recordButton.dataset.recordId);
+    if (record) openRecordDetails(record);
+  }
+});
+
+function beginSharing(records) {
+  state.shareRecords = records;
+  shareModal.hidden = false;
+}
+
+shareSelectedBtn.addEventListener('click', () => {
+  const selected = state.records.filter((record) => state.selectedRecordIds.has(record.id));
+  if (selected.length) beginSharing(selected);
+});
+
+recordBackBtn.addEventListener('click', closeRecordDetails);
+recordModal.addEventListener('click', (event) => {
+  if (event.target === recordModal) closeRecordDetails();
+});
+
+editRecordBtn.addEventListener('click', () => {
+  const record = state.records.find((item) => item.id === state.openRecordId);
+  if (record) populateExpenseForm(record);
+});
+
+shareRecordBtn.addEventListener('click', () => {
+  const record = state.records.find((item) => item.id === state.openRecordId);
+  if (!record) return;
+  closeRecordDetails();
+  beginSharing([record]);
+});
+
+saveReceiptBtn.addEventListener('click', () => {
+  const record = state.records.find((item) => item.id === state.openRecordId);
+  if (!record?.imagen) return;
+  const isPdf = record.imagen.startsWith('data:application/pdf');
+  const extension = isPdf ? 'pdf' : (record.imagen.match(/^data:image\/([^;]+)/)?.[1] || 'jpg');
+  const blob = dataUrlToBlob(record.imagen);
+  const name = `comprobante-${safeFilename(record.item)}.${extension}`;
+  if (nativeFilesystem && nativeShare) {
+    shareNativeFiles([{ blob, name }]).catch((error) => alert(error.message || 'No se pudo guardar el comprobante.'));
+    return;
+  }
+  downloadBlob(blob, name);
 });
 
 exportBtn.addEventListener('click', async () => {
   try {
     const blob = await exportWorkbook();
-    if (await shareNativeFiles([{ blob, name: 'gastos-jcz-trading.xlsx' }])) return;
-    downloadBlob(blob, 'gastos-jcz-trading.xlsx');
+    const name = `${reportBaseName()}.xlsx`;
+    if (await shareNativeFiles([{ blob, name }])) return;
+    downloadBlob(blob, name);
   } catch (error) {
     alert(error.message || 'No se pudo exportar el archivo Excel.');
   }
 });
 
-function getSummaryText() {
-  const summaryText = `Control de gastos\n\n${state.records.map((item) => `${item.item}: ${formatCurrency(item.totalPagado)}`).join('\n') || 'Sin registros'}`;
+function getSummaryText(records = state.shareRecords || state.records) {
+  const summaryText = `Control de gastos\n\n${records.map((item) => `${item.item}: ${formatCurrency(item.totalPagado)}`).join('\n') || 'Sin registros'}`;
   return summaryText;
 }
 
-async function shareReport(format) {
+async function shareReport(format, records = state.shareRecords || state.records) {
+  const dateSuffix = reportBaseName();
   if (format === 'whatsapp') {
-    const whatsappLink = `whatsapp://send?text=${encodeURIComponent(getSummaryText())}`;
+    const receiptFiles = records.filter((record) => record.imagen).map((record) => {
+      const mime = record.imagen.match(/^data:([^;,]+)/)?.[1] || 'application/octet-stream';
+      const extension = mime === 'application/pdf' ? 'pdf' : (mime.split('/')[1] || 'jpg');
+      return new File([dataUrlToBlob(record.imagen)], `comprobante-${safeFilename(record.item)}.${extension}`, { type: mime });
+    });
+    if (receiptFiles.length && await shareNativeFiles(receiptFiles.map((file) => ({ blob: file, name: file.name })))) return;
+    if (receiptFiles.length && navigator.share && (!navigator.canShare || navigator.canShare({ files: receiptFiles }))) {
+      await navigator.share({ title: 'Comprobantes JCZ Trading', text: getSummaryText(records), files: receiptFiles });
+      return;
+    }
+    const whatsappLink = `whatsapp://send?text=${encodeURIComponent(getSummaryText(records))}`;
     window.location.href = whatsappLink;
-    setTimeout(() => window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(getSummaryText())}`, '_blank'), 800);
+    setTimeout(() => window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(getSummaryText(records))}`, '_blank'), 800);
     return;
   }
 
   const files = [];
   if (format === 'excel' || format === 'both') {
-    const excelBlob = await exportWorkbook();
-    files.push(new File([excelBlob], 'gastos-jcz-trading.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+    const excelBlob = await exportWorkbook(records);
+    files.push(new File([excelBlob], `${dateSuffix}.xlsx`, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
   }
   if (format === 'pdf' || format === 'both') {
-    const pdfBlob = buildPdfBlob();
-    files.push(new File([pdfBlob], 'gastos-jcz-trading.pdf', { type: 'application/pdf' }));
+    const pdfBlob = buildPdfBlob(records);
+    files.push(new File([pdfBlob], `${dateSuffix}.pdf`, { type: 'application/pdf' }));
   }
+
+  const receiptFiles = records.filter((record) => record.imagen).map((record) => {
+    const mime = record.imagen.match(/^data:([^;,]+)/)?.[1] || 'application/octet-stream';
+    const extension = mime === 'application/pdf' ? 'pdf' : (mime.split('/')[1] || 'jpg');
+    return new File([dataUrlToBlob(record.imagen)], `comprobante-${safeFilename(record.item)}.${extension}`, { type: mime });
+  });
+  files.push(...receiptFiles);
 
   if (await shareNativeFiles(files.map((file) => ({ blob: file, name: file.name })))) return;
 
@@ -1019,7 +1302,7 @@ async function shareReport(format) {
     try {
       await navigator.share({
         title: 'Gastos del mes',
-        text: getSummaryText(),
+        text: getSummaryText(records),
         files,
       });
       return;
@@ -1037,15 +1320,19 @@ function closeShareDialog() {
 }
 
 shareBtn.addEventListener('click', () => {
+  state.shareRecords = null;
   shareModal.hidden = false;
 });
 
 async function runShare(format) {
+  const records = state.shareRecords || state.records;
   closeShareDialog();
   try {
-    await shareReport(format);
+    await shareReport(format, records);
   } catch (error) {
     alert(error.message || 'No se pudo preparar el archivo para compartir.');
+  } finally {
+    state.shareRecords = null;
   }
 }
 

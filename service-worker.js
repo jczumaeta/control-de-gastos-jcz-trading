@@ -1,5 +1,9 @@
-const CACHE_NAME = 'gastos-cache-v3';
-const ASSETS = ['./', './index.html', './styles.css', './app.js', './manifest.json', './icon.svg'];
+const CACHE_NAME = 'gastos-cache-v6';
+const ASSETS = [
+  './', './index.html', './styles.css', './app.js', './manifest.json',
+  './assets/logo.jpg', './assets/icon-192.png', './assets/icon-512.png', './assets/apple-touch-icon.png',
+  './assets/vendor/xlsx.full.min.js', './assets/vendor/jspdf.umd.min.js',
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting()));

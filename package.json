@@ -1,0 +1,34 @@
+{
+  "name": "control-de-gastos-jcz-trading",
+  "version": "1.2.0",
+  "private": true,
+  "description": "Control de gastos JCZ Trading para web, Android y Windows",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "web:dev": "set PATH=..\\tools\\node-v20.19.0-win-x64;%PATH%&& node tools/serve.js",
+    "prepare:web": "set PATH=..\\tools\\node-v20.19.0-win-x64;%PATH%&& node tools/prepare-web.js",
+    "icons": "set PATH=..\\tools\\node-v20.19.0-win-x64;%PATH%&& node tools/generate-icons.js && node tools/prepare-web.js && capacitor-assets generate --android --pwa",
+    "android:add": "set PATH=..\\tools\\node-v20.19.0-win-x64;%PATH%&& cap add android",
+    "android:sync": "set PATH=..\\tools\\node-v20.19.0-win-x64;%PATH%&& node tools/prepare-web.js && cap sync android",
+    "android:build": "set PATH=..\\tools\\node-v20.19.0-win-x64;%PATH%&& node tools/build-android.js",
+    "desktop:build": "set PATH=..\\tools\\node-v20.19.0-win-x64;%PATH%&& node tools/generate-icons.js && electron-builder --win portable --publish never",
+    "prepare:desktop": "set PATH=..\\tools\\node-v20.19.0-win-x64;%PATH%&& node tools/generate-icons.js"
+  },
+  "dependencies": {
+    "@capacitor-community/speech-recognition": "^6.0.1",
+    "@capacitor/android": "^6.1.0",
+    "@capacitor/core": "^6.1.0",
+    "@capacitor/filesystem": "^6.0.4",
+    "@capacitor/share": "^6.0.4",
+    "jspdf": "^4.2.1",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^6.1.0",
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3",
+    "sharp": "^0.34.3"
+  }
+}

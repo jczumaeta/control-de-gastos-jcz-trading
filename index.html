@@ -10,8 +10,8 @@
     <meta name="description" content="Control de gastos diario, semanal y mensual." />
     <title>Control de gastos</title>
     <link rel="manifest" href="manifest.json" />
-    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-    <link rel="stylesheet" href="styles.css?v=20260917-3" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="stylesheet" href="styles.css?v=20261001-1" />
   </head>
   <body>
     <section id="authGate" class="auth-gate">
@@ -27,6 +27,11 @@
           Contraseña
           <input id="authPassword" type="password" minlength="6" autocomplete="current-password" required />
         </label>
+        <label class="profile-icon-field">
+          Icono de perfil (opcional)
+          <input id="profileIconInput" type="file" accept="image/*" />
+          <img id="profileIconPreview" alt="Vista previa del icono" hidden />
+        </label>
         <div class="auth-actions">
           <button type="submit" class="primary-btn" data-auth-mode="signin">Iniciar sesión</button>
           <button type="button" class="secondary" id="createAccountBtn">Crear cuenta</button>
@@ -38,6 +43,7 @@
 
     <div id="appContent" hidden>
     <div class="user-session" id="userSession" hidden>
+      <img id="userProfileIcon" alt="Icono de perfil" hidden />
       <span id="userEmail"></span>
       <button type="button" id="signOutBtn">Cerrar sesión</button>
     </div>
@@ -47,8 +53,7 @@
           <img src="assets/logo.jpg" alt="JCZ Trading" class="brand-logo" />
         </div>
         <div class="title-block">
-          <p class="eyebrow">Control de gastos</p>
-          <h1>Gastos del mes</h1>
+          <h1>CONTROL DE GASTOS</h1>
         </div>
         <div class="top-actions">
           <button id="exportCsvBtn" type="button">Exportar Excel</button>
@@ -78,8 +83,9 @@
               <label>
                 Fecha
                 <div class="input-with-action">
-                  <input name="fecha" type="date" required />
-                  <button type="button" class="voice-btn" data-target="fecha" aria-label="Dictar fecha">🎙</button>
+                  <input name="fecha" type="text" inputmode="numeric" placeholder="dd/mm/aaaa" pattern="\d{2}/\d{2}/\d{4}" autocomplete="off" required />
+                  <button type="button" id="chooseDateBtn" class="date-picker-button" aria-label="Elegir fecha">▦</button>
+                  <input id="datePickerInput" type="date" aria-label="Calendario" tabindex="-1" />
                 </div>
               </label>
 
@@ -108,25 +114,31 @@
               </label>
 
               <label class="full-span upload-label">
-                Imagen del comprobante
+                Comprobante (foto, imagen o PDF)
                 <div class="receipt-actions">
                   <button type="button" class="receipt-btn" id="takePhotoBtn">Tomar foto</button>
                   <button type="button" class="receipt-btn secondary" id="chooseFileBtn">Elegir archivo</button>
                 </div>
                 <input id="cameraInput" name="imagenCamara" type="file" accept="image/*" capture="environment" hidden />
-                <input id="fileInput" name="imagenArchivo" type="file" accept="image/*" hidden />
+                <input id="fileInput" name="imagenArchivo" type="file" accept="image/*,application/pdf,.pdf" hidden />
                 <span id="receiptStatus" class="receipt-status">No se ha seleccionado ningún comprobante.</span>
               </label>
             </div>
 
-            <button type="submit" class="primary-btn">Guardar gasto</button>
+            <button id="saveExpenseBtn" type="submit" class="primary-btn">Guardar gasto</button>
+            <button id="cancelEditBtn" type="button" class="secondary cancel-edit" hidden>Cancelar edición</button>
           </form>
         </section>
 
         <section class="panel">
           <div class="section-head">
-            <h2 id="viewTitle">Gastos por día</h2>
-            <div id="summaryPill" class="summary-pill">$0.00</div>
+            <h2 id="viewTitle">ACUMULADO</h2>
+            <div id="summaryPill" class="summary-pill">S/ 0.00</div>
+          </div>
+          <div id="dayTabs" class="day-tabs" role="tablist" aria-label="Gastos por fecha"></div>
+          <div class="selection-actions">
+            <span id="selectionCount">0 gastos seleccionados</span>
+            <button id="shareSelectedBtn" type="button" disabled>Enviar seleccionados</button>
           </div>
           <div id="viewContainer" class="view-container"></div>
         </section>
@@ -156,11 +168,23 @@
         </div>
       </div>
     </div>
+    <div id="recordModal" class="camera-modal" hidden>
+      <article class="record-dialog" role="dialog" aria-modal="true" aria-labelledby="recordTitle">
+        <button type="button" id="recordBackBtn" class="record-back" aria-label="Volver">←</button>
+        <h2 id="recordTitle">Detalle del gasto</h2>
+        <div id="recordDetails"></div>
+        <div class="record-actions">
+          <button type="button" id="editRecordBtn" class="receipt-btn secondary">Editar datos</button>
+          <button type="button" id="shareRecordBtn" class="receipt-btn">Enviar este gasto</button>
+          <button type="button" id="saveReceiptBtn" class="receipt-btn secondary" hidden>Guardar comprobante</button>
+        </div>
+      </article>
+    </div>
     </div>
 
     <script src="assets/vendor/xlsx.full.min.js"></script>
     <script src="assets/vendor/jspdf.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="app.js?v=20260917-3"></script>
+    <script src="app.js?v=20261001-1"></script>
   </body>
 </html>

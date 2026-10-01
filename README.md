@@ -1,36 +1,19 @@
-# Control de gastos
+# Control de Gastos JCZ Trading
 
-Aplicación web para controlar gastos por día, semana y mes. Está diseñada para funcionar como app progresiva en Android, Windows, iPhone y iPad.
+Aplicación para registrar gastos, compartir comprobantes y sincronizar los datos de la cuenta con Supabase.
 
-- Registro de gastos con columnas: N°, Item, Fecha, Número de factura, Total pagado, Descripción e Imagen.
-- Vista por día con nombre del día, por ejemplo: 17-08-26.
-- Vista por semanas con el total acumulado de lunes a sábado.
-- Página final de Gastos del mes con el resumen por semanas y total general.
-- Guardado local en el navegador.
-- Exportación a CSV compatible con Excel.
-- Envío por WhatsApp o correo.
-- Instalación como app desde Safari en iPhone/iPad, o desde Chrome/Edge en Android y Windows.
+- Fecha actual precargada y editable.
+- Navegación por pestañas diarias; las semanas incluyen lunes a domingo.
+- Ficha detallada por gasto, con imagen o PDF de comprobante, descarga y reenvío.
+- Selección múltiple para compartir gastos por WhatsApp, correo u otras aplicaciones.
+- Exportación XLSX con una hoja por fecha, resumen semanal y resumen mensual.
+- Archivos con nombre `gastos-jcz-trading-al-DD-MM-YY`.
+- Icono JCZ Trading en la PWA; al crear una cuenta se puede añadir un icono de perfil opcional.
 
-## Cómo usar
+## Desarrollo
 
-1. Abre la app en el navegador.
-2. Agrega un gasto con el formulario.
-3. La información se guarda localmente en el navegador.
-4. Usa el botón Exportar Excel para descargar la hoja de cálculo.
-5. Usa el botón Enviar para compartir por WhatsApp o correo.
+Ejecuta `npm install` y luego `npm run web:dev` para iniciar el servidor web local.
 
-## Instalar en iPhone o iPad
+Para generar recursos y compilar Android, configura Java 17 y Android SDK, y ejecuta `npm run android:build`. Para Windows usa `npm run desktop:build`.
 
-1. Abre la app en Safari.
-2. Toca el botón de compartir.
-3. Selecciona “Agregar a pantalla de inicio”.
-4. Confirma para instalarla como app.
-
-## Instalar en Android o Windows
-
-1. Abre la app en Chrome o Edge.
-2. Usa la opción “Instalar app” o “Agregar a pantalla de inicio”.
-
-## Nota
-
-La exportación genera un archivo CSV que se abre directamente en Excel y conserva el formato tabular requerido para el control de gastos.
+La tabla Supabase y sus políticas de acceso están en [supabase-schema.sql](supabase-schema.sql).
